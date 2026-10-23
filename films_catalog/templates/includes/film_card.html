@@ -11,7 +11,7 @@
         </div>
         <p class="card-text mt-auto">
             <strong>{{ film.average_rating|floatformat:1 }}</strong>/10
-            <span class="text-muted">({{ film.ratings|length }} оцен.)</span>
+            <span class="text-muted">({{ film.rating_count }} оцен.)</span>
         </p>
         <a class="btn btn-outline-primary" href="{% url 'films:detail' forloop.counter0 %}">
             Подробнее

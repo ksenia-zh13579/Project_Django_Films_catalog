@@ -25,7 +25,7 @@
             <ul class="list-group">
                 {% for rating in film.ratings %}
                     <li class="list-group-item d-flex justify-content-between">
-                        <span>{{ rating.user.name }}</span>
+                        <span>{{ rating.user_name }}</span>
                         <strong>{{ rating.value }}/10</strong>
                     </li>
                 {% endfor %}
