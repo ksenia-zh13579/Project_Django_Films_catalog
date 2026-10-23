@@ -1,0 +1,621 @@
+### 1. Проектирование структуры базы данных
+
+В проекте используются таблицы:
+
+- `films` — фильмы и сериалы;
+- `genres` — жанры;
+- `film_genres` — связь фильмов с жанрами;
+- `users` — пользователи;
+- `ratings` — оценки пользователей;
+- `statuses` — статусы пользователей по фильмам.
+
+Связи:
+
+- один фильм может иметь несколько жанров;
+- один жанр может относиться к нескольким фильмам;
+- пользователь может оценивать разные фильмы;
+- пользователь может назначать фильмам статусы.
+
+Схема находится в `sql/schema.sql`.
+
+---
+
+### 2. Создание таблиц и связей
+
+Пример:
+
+```sql
+CREATE TABLE films (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    director TEXT NOT NULL
+);
+
+CREATE TABLE ratings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    film_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    value INTEGER NOT NULL CHECK (value BETWEEN 1 AND 10),
+    FOREIGN KEY (film_id) REFERENCES films(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+```
+
+Первичный ключ `id` однозначно идентифицирует запись. Внешние ключи `film_id` и `user_id` связывают оценки с существующими фильмами и пользователями.
+
+---
+
+### 3. Создание базы данных и выполнение схемы
+
+SQLite создаёт файл базы автоматически при подключении:
+
+```python
+sqlite3.connect("db/films_catalog.sqlite3")
+```
+
+Схема выполняется так:
+
+```python
+conn.executescript(
+    Path("sql/schema.sql").read_text(encoding="utf-8")
+)
+```
+
+Чтобы повторный запуск не вызывал ошибку, используются команды:
+
+```sql
+CREATE TABLE IF NOT EXISTS films (...);
+```
+
+Скрипт можно выполнять многократно.
+
+---
+
+### 4. Подключение к базе данных
+
+Подключение реализовано в `db/database.py`:
+
+```python
+conn = sqlite3.connect(DATABASE_PATH)
+conn.row_factory = sqlite3.Row
+conn.execute("PRAGMA foreign_keys = ON")
+```
+
+Проверить используемый файл можно так:
+
+```python
+print(DATABASE_PATH.resolve())
+```
+
+Также можно выполнить:
+
+```sql
+SELECT name FROM sqlite_master WHERE type = 'table';
+```
+
+Если выводятся таблицы проекта, используется правильная база.
+
+---
+
+### 5. Импорт данных из JSON
+
+Импорт выполняется командой:
+
+```bash
+python -m db.import_json
+```
+
+Файл `db/import_json.py`:
+
+1. читает `data/films.json` и `data/users.json`;
+2. добавляет фильмы и пользователей;
+3. отдельно добавляет жанры;
+4. создаёт связи `film_genres`;
+5. переносит оценки;
+6. переносит статусы.
+
+Сначала импортируются основные сущности, затем связанные записи, потому что внешние ключи должны ссылаться на уже существующие строки.
+
+---
+
+### 6. Проверка результатов импорта
+
+Например:
+
+```sql
+SELECT COUNT(*) AS film_count FROM films;
+SELECT COUNT(*) AS user_count FROM users;
+SELECT COUNT(*) AS rating_count FROM ratings;
+SELECT COUNT(*) AS status_count FROM statuses;
+```
+
+Результаты сравниваются с JSON:
+
+- количество объектов в `films.json` — с количеством строк в `films`;
+- количество пользователей в `users.json` — с количеством строк в `users`;
+- количество оценок — с количеством элементов `ratings`;
+- количество статусов — с количеством записей в словарях `statuses`.
+
+Если количество отличается, импорт выполнен неполностью.
+
+---
+
+### 7. Выборка данных с помощью `SELECT`
+
+Получить список фильмов:
+
+```sql
+SELECT id, name, director
+FROM films;
+```
+
+Если выбрать только:
+
+```sql
+SELECT name
+FROM films;
+```
+
+результат будет содержать только названия. От состава `SELECT` зависит, какие поля будут доступны в Python и шаблоне.
+
+---
+
+### 8. Фильтрация с помощью `WHERE`
+
+Поиск по режиссёру:
+
+```sql
+SELECT name, director
+FROM films
+WHERE director LIKE ?;
+```
+
+Параметр:
+
+```python
+conn.execute(query, ("%Миядзаки%",))
+```
+
+Если заменить условие на:
+
+```sql
+WHERE director = ?
+```
+
+будет найдено только точное совпадение.
+
+---
+
+### 9. Фильтрация по состоянию или признаку
+
+Получить фильмы со статусом «просмотрено»:
+
+```sql
+SELECT f.name, u.name AS user_name
+FROM statuses AS s
+JOIN films AS f ON f.id = s.film_id
+JOIN users AS u ON u.id = s.user_id
+WHERE s.status = ?;
+```
+
+Параметр:
+
+```python
+("просмотрено",)
+```
+
+При замене на `"смотрю"` будут показаны только фильмы с этим статусом.
+
+---
+
+### 10. Объединение таблиц с помощью `JOIN`
+
+Получить фильмы и их жанры:
+
+```sql
+SELECT f.name AS film_name, g.name AS genre
+FROM films AS f
+JOIN film_genres AS fg ON fg.film_id = f.id
+JOIN genres AS g ON g.id = fg.genre_id;
+```
+
+Условия:
+
+```sql
+fg.film_id = f.id
+g.id = fg.genre_id
+```
+
+Они соединяют фильм со связующей таблицей, а затем со справочником жанров.
+
+---
+
+### 11. Отбор по нескольким условиям
+
+Например, найти фильмы определённого режиссёра с оценкой не ниже 8:
+
+```sql
+SELECT f.name, f.director, r.value
+FROM films AS f
+JOIN ratings AS r ON r.film_id = f.id
+WHERE f.director LIKE ?
+  AND r.value >= ?;
+```
+
+Параметры:
+
+```python
+("%Миядзаки%", 8)
+```
+
+Если изменить порог с `8` на `10`, результат станет меньше.
+
+---
+
+### 12. Подсчёт записей с помощью `COUNT()`
+
+Количество фильмов:
+
+```sql
+SELECT COUNT(*) AS film_count
+FROM films;
+```
+
+`COUNT()` считает количество строк. Если подходящих записей нет, результатом будет `0`, а не ошибка.
+
+Например:
+
+```sql
+SELECT COUNT(*) AS count
+FROM films
+WHERE director = 'Неизвестный режиссёр';
+```
+
+---
+
+### 13. Группировка с помощью `GROUP BY`
+
+Средняя оценка каждого фильма:
+
+```sql
+SELECT
+    f.name,
+    ROUND(AVG(r.value), 2) AS average_rating
+FROM films AS f
+LEFT JOIN ratings AS r ON r.film_id = f.id
+GROUP BY f.id, f.name;
+```
+
+`GROUP BY` объединяет оценки одного фильма в отдельную группу. Для каждой группы вычисляется среднее значение.
+
+---
+
+### 14. Фильтрация групп с помощью `HAVING`
+
+Получить фильмы минимум с двумя оценками:
+
+```sql
+SELECT
+    f.name,
+    COUNT(r.id) AS rating_count
+FROM films AS f
+JOIN ratings AS r ON r.film_id = f.id
+GROUP BY f.id, f.name
+HAVING COUNT(r.id) >= 2;
+```
+
+`WHERE` фильтрует отдельные строки до группировки, а `HAVING` фильтрует уже сформированные группы.
+
+Если изменить `2` на `3`, останутся только фильмы минимум с тремя оценками.
+
+---
+
+### 15. Параметризованные SQL-запросы
+
+Правильно:
+
+```python
+query = """
+SELECT name, director
+FROM films
+WHERE director LIKE ?
+"""
+rows = conn.execute(query, ("%Миядзаки%",)).fetchall()
+```
+
+Неправильно:
+
+```python
+query = f"SELECT * FROM films WHERE director LIKE '%{value}%'"
+```
+
+Параметры `?` защищают от SQL-инъекций и корректно обрабатывают специальные символы.
+
+---
+
+### 16. Получение и обработка результатов SQL
+
+В проекте используется:
+
+```python
+conn.row_factory = sqlite3.Row
+```
+
+Поэтому результат можно обрабатывать по именам столбцов:
+
+```python
+row = conn.execute(
+    "SELECT name, director FROM films"
+).fetchone()
+
+print(row["name"])
+print(row["director"])
+```
+
+`sqlite3.Row` удобнее, чем обращение по индексам `row[0]`, `row[1]`.
+
+---
+
+### 17. Отображение списка объектов
+
+Страница `/films/` использует view-функцию `film_list`.
+
+Представление получает данные:
+
+```python
+films = get_films()
+return render(
+    request,
+    "films/film_list.html",
+    {"films": films},
+)
+```
+
+Шаблон перебирает результат:
+
+```django
+{% for film in films %}
+    <h2>{{ film.name }}</h2>
+    <p>{{ film.director }}</p>
+{% empty %}
+    <p>В каталоге пока нет произведений.</p>
+{% endfor %}
+```
+
+---
+
+### 18. Отображение отфильтрованных записей
+
+Если view выполняет запрос:
+
+```sql
+WHERE s.status = 'просмотрено'
+```
+
+то в шаблон передаются только записи с этим статусом.
+
+SQL определяет состав результата, а шаблон отвечает только за его отображение.
+
+---
+
+### 19. Отображение связанных данных
+
+На странице фильма одновременно отображаются:
+
+- название;
+- режиссёр;
+- жанры;
+- средняя оценка;
+- оценки пользователей.
+
+Жанры и оценки получаются SQL-запросами с `JOIN`, например:
+
+```sql
+SELECT u.name, r.value
+FROM ratings AS r
+JOIN users AS u ON u.id = r.user_id
+WHERE r.film_id = ?;
+```
+
+После этого результат передаётся в `film_detail.html`.
+
+---
+
+### 20. Реализация поиска по пользовательским параметрам
+
+В текущем варианте проекта основной интерфейс отображает данные и не содержит отдельной формы поиска. Для реализации поиска можно добавить GET-параметр:
+
+```text
+/films/?director=Миядзаки
+```
+
+В представлении:
+
+```python
+director = request.GET.get("director", "")
+query = """
+SELECT id, name, director
+FROM films
+WHERE director LIKE ?
+"""
+rows = conn.execute(query, (f"%{director}%",)).fetchall()
+```
+
+В шаблоне форма может выглядеть так:
+
+```html
+<form method="get">
+    <input name="director" value="{{ director }}">
+    <button type="submit">Найти</button>
+</form>
+```
+
+---
+
+### 21. Отображение статистики
+
+Для статистики используется агрегатный запрос:
+
+```sql
+SELECT
+    f.name,
+    ROUND(AVG(r.value), 2) AS average_rating,
+    COUNT(r.id) AS rating_count
+FROM films AS f
+LEFT JOIN ratings AS r ON r.film_id = f.id
+GROUP BY f.id, f.name;
+```
+
+View передаёт результат:
+
+```python
+return render(
+    request,
+    "films/statistics.html",
+    {"statistics": rows},
+)
+```
+
+Шаблон отображает:
+
+```django
+{% for item in statistics %}
+    <p>
+        {{ item.name }}:
+        {{ item.average_rating }}/10,
+        оценок: {{ item.rating_count }}
+    </p>
+{% endfor %}
+```
+
+---
+
+### 22. Передача результатов в шаблон
+
+Частая ошибка — несовпадение имён.
+
+Неправильно:
+
+```python
+return render(request, "films/list.html", {"films": rows})
+```
+
+А в шаблоне:
+
+```django
+{% for movie in movies %}
+```
+
+Правильно использовать одинаковое имя:
+
+```python
+return render(request, "films/list.html", {"movies": rows})
+```
+
+```django
+{% for movie in movies %}
+```
+
+Или изменить шаблон на `films`.
+
+---
+
+### 23. Обработка пустых результатов
+
+Пустой результат — это не ошибка SQL:
+
+```python
+rows = cursor.fetchall()
+```
+
+может вернуть пустой список `[]`.
+
+В шаблоне используется:
+
+```django
+{% for film in films %}
+    {{ film.name }}
+{% empty %}
+    <p>По вашему запросу ничего не найдено.</p>
+{% endfor %}
+```
+
+Ошибка SQL возникает только при некорректном запросе, например при обращении к несуществующей таблице.
+
+---
+
+### 24. Диагностика ошибок SQL-запросов
+
+Например, ошибочный запрос:
+
+```sql
+SELECT title
+FROM films;
+```
+
+В таблице `films` поле называется `name`, поэтому SQLite выдаст ошибку:
+
+```text
+no such column: title
+```
+
+Исправленный запрос:
+
+```sql
+SELECT name
+FROM films;
+```
+
+При диагностике нужно проверить:
+
+1. название таблицы;
+2. название поля;
+3. условие `WHERE`;
+4. условия `JOIN`;
+5. наличие параметров запроса.
+
+Структуру таблицы можно посмотреть командой:
+
+```sql
+.schema films
+```
+
+---
+
+### 25. Сквозная обработка запроса в Django
+
+Полный путь выглядит так:
+
+1. Пользователь открывает URL, например `/films/`.
+2. `urls.py` направляет запрос в `film_list`.
+3. View вызывает `get_films()`.
+4. Сервис открывает SQLite через `get_connection()`.
+5. Выполняется SQL-запрос.
+6. Результат возвращается как `sqlite3.Row`.
+7. Данные передаются в контекст:
+
+   ```python
+   {"films": films}
+   ```
+
+8. Django рендерит шаблон `film_list.html`.
+9. HTML отправляется браузеру.
+
+Если результат неправильный, проверять нужно последовательно:
+
+- URL и имя view;
+- параметры запроса;
+- текст SQL;
+- имя таблицы и полей;
+- условия `JOIN` и `WHERE`;
+- содержимое результата в Python;
+- имя переменной в контексте;
+- имя переменной в шаблоне;
+- условия `{% if %}` и `{% for %}`.
+
+Краткая схема:
+
+```text
+Браузер → URLconf → view → SQLite → результат SQL
+→ context → шаблон Django → HTML
+```
