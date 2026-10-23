@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Каталог — Анима-каталог{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Каталог произведений</h1>
+    <span class="text-muted">{{ films|length }} записей</span>
+</div>
+<div class="row g-4">
+    {% for film in films %}
+        <div class="col-md-6 col-lg-4">{% include "includes/film_card.html" %}</div>
+    {% empty %}
+        <p>В каталоге пока нет произведений.</p>
+    {% endfor %}
+</div>
+{% endblock %}

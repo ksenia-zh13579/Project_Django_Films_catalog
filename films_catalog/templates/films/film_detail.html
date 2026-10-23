@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}{{ film.name }} — Анима-каталог{% endblock %}
+
+{% block content %}
+<a class="link-secondary" href="{% url 'films:list' %}">← Вернуться к каталогу</a>
+<div class="card mt-3">
+    <div class="card-body p-4">
+        <h1>{{ film.name }}</h1>
+        <p class="lead">Режиссёр: {{ film.director }}</p>
+        <h2 class="h5">Жанры</h2>
+        <p>
+            {% for genre in film.genres %}
+                <span class="badge text-bg-secondary">{{ genre|capfirst }}</span>
+            {% empty %}
+                <span class="text-muted">Не указаны</span>
+            {% endfor %}
+        </p>
+        <div class="rating-box my-4">
+            <span class="display-6">{{ film.average_rating|floatformat:1 }}</span>/10
+            <span class="text-muted">средняя оценка</span>
+        </div>
+        <h2 class="h5">Оценки пользователей</h2>
+        {% if film.ratings %}
+            <ul class="list-group">
+                {% for rating in film.ratings %}
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>{{ rating.user.name }}</span>
+                        <strong>{{ rating.value }}/10</strong>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="text-muted">Оценок пока нет.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

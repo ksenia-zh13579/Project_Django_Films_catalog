@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Пользователи — Анима-каталог{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Пользователи каталога</h1>
+<div class="row g-4">
+    {% for user in users %}
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h2 class="card-title h5">{{ user.name }}</h2>
+                    {% if user.statuses %}
+                        <ul class="list-group list-group-flush">
+                            {% for film_name, status in user.statuses.items %}
+                                <li class="list-group-item px-0 d-flex justify-content-between">
+                                    <span>{{ film_name }}</span>
+                                    <span class="badge text-bg-info">{{ status|capfirst }}</span>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="text-muted mb-0">Статусы ещё не назначены.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    {% empty %}
+        <p>Пользователи не найдены.</p>
+    {% endfor %}
+</div>
+{% endblock %}

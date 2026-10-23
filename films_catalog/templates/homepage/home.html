@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Главная — Анима-каталог{% endblock %}
+
+{% block content %}
+<section class="p-5 mb-4 rounded-3 hero">
+    <div class="container-fluid py-3">
+        <h1 class="display-5 fw-bold">Мир анимации в одном каталоге</h1>
+        <p class="col-md-8 fs-5">Изучайте произведения, жанры и оценки пользователей.</p>
+        <a class="btn btn-primary btn-lg" href="{% url 'films:list' %}">Открыть каталог</a>
+    </div>
+</section>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Избранные произведения</h2>
+    <span class="badge text-bg-primary">{{ film_count }} произвед.</span>
+</div>
+<div class="row g-4">
+    {% for film in films %}
+        <div class="col-md-6 col-lg-4">{% include "includes/film_card.html" %}</div>
+    {% empty %}
+        <p>В каталоге пока нет произведений.</p>
+    {% endfor %}
+</div>
+{% endblock %}
